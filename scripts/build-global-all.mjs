@@ -39,17 +39,36 @@ await fs.mkdir(OUT_DIR, { recursive: true });
 // 1) TXT files: concatenate, skipping missing files
 for (const filename of [PROCEDURES, PROFILE_RESTRICTIONS]) {
   let out = "";
+  let lastWrittenLine = null;
+  let skipped = 0;
 
   for (const sector of sectorDirs) {
     const content = await tryReadText(path.join(sector, filename));
     if (content == null) continue;
 
-    out += content;
-    if (!out.endsWith("\n")) out += "\n";
+    const lines = content.split(/\r?\n/);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // If the file ends with a newline, split() gives a final "" — skip it.
+      if (i === lines.length - 1 && line === "") continue;
+
+      if (line === lastWrittenLine) {
+        skipped++;
+        console.warn(
+          `[${filename}] skipped duplicate line (sector=${path.basename(sector)}): ${line}`
+        );
+        continue;
+      }
+
+      out += line + "\n";
+      lastWrittenLine = line;
+    }
   }
 
   await fs.writeFile(path.join(OUT_DIR, filename), out, "utf8");
-  console.log(`Wrote ${OUT_DIR}/${filename}`);
+  console.log(`Wrote ${OUT_DIR}/${filename} (skipped ${skipped} duplicate lines)`);
 }
 
 // 2) airblocks.geojson: valid FeatureCollection with required top-level fields.
